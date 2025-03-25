@@ -12,7 +12,7 @@ app.use(cors()); // ✅ Prevent CORS errors
 app.use(express.json()); // ✅ Parse JSON requests
 
 dotenv.config();
-const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 if (!apiKey) throw new Error("API Key is missing.");
 
 
