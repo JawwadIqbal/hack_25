@@ -2,7 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-// import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI } from "@langchain/openai";
 // import { ChatAnthropic } from "@langchain/anthropic";
 
 const app = express();
@@ -13,14 +13,23 @@ app.use(express.json()); // ✅ Parse JSON requests
 
 dotenv.config();
 const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+// const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+
 if (!apiKey) throw new Error("API Key is missing.");
 
 
-const initializeChatModel = () => {
+ const initializeChatModel = () => {
   return new ChatGoogleGenerativeAI({
     model: "gemini-2.0-flash",
     apiKey: apiKey,
   });
+
+//   const initializeChatModel = () => {
+//     return new ChatOpenAI({
+//         modelName: "gpt-3.5-turbo",  // Updated model ID
+//         temperature: 0.7,
+//       openAIApiKey: apiKey,
+//     });
 };
 
 // Define the API route
@@ -48,33 +57,66 @@ app.post("/api/generate-itinerary", async (req, res) => {
     const chatModel = initializeChatModel();
 
     const systemPrompt = `
-  You are an expert travel itinerary planner. Your job is to generate a well-structured, engaging, and visually appealing travel itinerary for a user based on their preferences.
+    remove styling from geenrated answer. Never use **
 
-  ###  Guidelines for Itinerary Generation 
-  -  No Transportation Details 🚫 : Do not mention flights, trains, buses, or any transport mode.
-  -  Daily Breakdown  : Each day should be written in  paragraph form , describing the experience in a flowing, engaging manner.
-  -  Balanced Schedule  : Ensure a mix of sightseeing, relaxation, cultural activities, and meals.
-  -  Personalization  : Tailor the itinerary to match the user's interests, budget, accommodation, and dietary preferences.
-  - Local Experience  : Recommend hidden gems, cultural experiences, and authentic local dining spots.
+🌍 *You are WORLD-CLASS TRAVEL DESIGNER* 🌍  
+Create immersive, budget-conscious itineraries that exceed expectations while respecting constraints.
 
-  ###  Itinerary Format 
-   Day 1: [Title]   
-  🌞  Morning : [Describe activities in an engaging way, e.g., "Start your day with a visit to..."].  
-  🌅  Afternoon : [Describe afternoon activities with immersive details].  
-  🌙  Evening : [Describe the evening experience, ensuring a balance of relaxation and fun].  
+🔹 **Core Requirements**  
+1. NO TRANSPORTATION MENTIONS 🚫 - Never reference flights/trains/buses  
+2. SPECIAL NEEDS FIRST ♿ - Prioritize these in ALL recommendations:  
+   
+   - Unique: {special_requests}  
 
-   Day 2: [Title]   
-  🌞  Morning : [Activity description]  
-  🌅  Afternoon : [Activity description]  
-  🌙  Evening : [Activity description]  
+3. BUDGET MASTERY 💰  
+   - Budget: {budget}  
+   - Daily Spending Caps ▸ Morning:35% | Afternoon:45% | Evening:20%  
+   - Include REALISTIC cost estimates for each activity  
+   - Cumulative daily total MUST stay under budget  
 
-   Final Notes 📝   
-  - Provide  essential travel tips .  
-  - Mention any  local phrases  that might help.  
-  - Recommend  packing tips  and cultural etiquette.  
-  - End with a warm, engaging farewell message.  
+🎯 **Itinerary Architecture**  
 
-  Ensure the text flows naturally, creating an immersive experience for the traveler! 🚀
+**DAY [X]: [Creative Title]**  
+🌄 *Morning Experience* (Budget: ₹X,XXX)  
+- Immersive 3-sentence narrative with:  
+  - 1 Hidden Gem 💎  
+  - 1 Cultural Insight 🎎  
+  - Cost Breakdown: Entry fees/meals/activities  
+
+☀️ *Afternoon Discovery* (Budget: ₹X,XXX)  
+- Blend of:  
+  - Local Food Experience 🍜 (Match {dietary_prefs})  
+  - Interactive Activity ✨  
+  - Cost Transparency: Transportation/tips  
+
+🌙 *Evening Magic* (Budget: ₹X,XXX)  
+- Choose:  
+  - Cultural Performance 🎭  
+  - Scenic Relaxation 🏞️  
+  - Night Market Adventure 🏮  
+  - Cost Considerations: Reservations/guides  
+
+💸 *Daily Financial Summary*  
+"Total Day Cost: ₹X,XXX (
+
+
+📦 **Smart Packing System**  
+- Climate-Adaptive Wardrobe 🌦️  
+- Culture-Appropriate Essentials 🧥  
+- Special Needs Kit ♿ (Curated for {requirements})  
+
+💬 **Local Lingo Toolkit**  
+- Essential Phrases 📝 (With phonetic pronunciations)  
+- Cultural Do's/Don'ts 🚦  
+- Emergency Terms 🆘  
+
+🎯 **Validation Check**  
+1. Triple-check budget math  
+2. Verify special needs accommodation  
+3. Ensure NO transport references  
+4. Confirm local authenticity  
+
+END with inspirational closing remark about the destination! ✨  
 `;
 
 
@@ -85,11 +127,11 @@ app.post("/api/generate-itinerary", async (req, res) => {
       -  Destination : ${destination}
       -  Travel Dates : ${startDate} to ${endDate}
       -  Number of Travelers : ${numberOfTravelers}
-      -  Budget : ${budget} budget
+      -  Budget : ${budget} budget. After each day itinerary, give the estimated expenditure for that day
       -  Accommodation Type : ${accommodation}
-      -  Meal Preferences : ${meal}
-      -  Interests : ${interest}
-      -  Special Requirements : ${specialRequirements || "None"}
+      -  Meal Preferences : ${meal}. Give me names of restuarent where only  ${meal} food is available 
+      -  Interests : ${interest}. 
+      -  Special Requirements : ${specialRequirements || "None"} Only give me a paragrpah of tips when to handle my ${specialRequirements || "None"}
 
       Ensure each day has  different activities , covering the user’s interests.
        No transportation details  should be included. Only list activities.

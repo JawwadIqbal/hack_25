@@ -7,8 +7,8 @@ dotenv.config();
 const app = express();
 const PORT = 5001;
 
-app.use(cors()); 
-app.use(express.json()); 
+app.use(cors());
+app.use(express.json());
 
 const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 if (!apiKey) {
@@ -21,60 +21,33 @@ const chatModel = new ChatGoogleGenerativeAI({
   apiKey: apiKey,
 });
 
-// Enhanced link configuration with tracking parameters
-const TRANSPORT_LINKS = {
+// 1. DEFINITIVE LINK MAPPING - WE CONTROL THESE 100%
+const TRANSPORT_DATA = {
   plane: {
-    baseUrl: "https://www.skyscanner.co.in/transport/flights",
-    params: {
-      origin: encodeURIComponent(source),
-      destination: encodeURIComponent(destination),
-      date: travelDate,
-      utm_source: "travel_app",
-      utm_medium: "api"
-    }
+    icon: "plane",
+    bookingLink: "https://www.skyscanner.co.in/"
   },
   train: {
-    baseUrl: "https://www.irctc.co.in/nget/train-search",
-    params: {
-      from: encodeURIComponent(source),
-      to: encodeURIComponent(destination),
-      journeyDate: travelDate,
-      src: "travel_app"
-    }
+    icon: "train",
+    bookingLink: "https://www.irctc.co.in/"
   },
   bus: {
-    baseUrl: "https://www.redbus.in/search",
-    params: {
-      from: encodeURIComponent(source),
-      to: encodeURIComponent(destination),
-      date: travelDate,
-      src: "travel_api"
-    }
+    icon: "bus",
+    bookingLink: "https://www.redbus.in/"
   }
 };
 
-// Fallback URLs in case parameter construction fails
-const FALLBACK_LINKS = {
-  plane: "https://www.skyscanner.co.in/",
-  train: "https://www.irctc.co.in/",
-  bus: "https://www.redbus.in/"
-};
-
-const buildBookingLink = (type, source, destination, travelDate) => {
-  try {
-    const config = TRANSPORT_LINKS[type];
-    if (!config) return FALLBACK_LINKS[type] || FALLBACK_LINKS.plane;
-    
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(config.params)) {
-      params.append(key, value);
-    }
-    
-    return `${config.baseUrl}?${params.toString()}`;
-  } catch (error) {
-    console.error(`Error building ${type} link:`, error);
-    return FALLBACK_LINKS[type] || FALLBACK_LINKS.plane;
-  }
+// 2. STRICT TYPE VALIDATION
+const normalizeTransportType = (rawType) => {
+  if (!rawType) return "plane";
+  
+  const type = rawType.toString().toLowerCase().trim();
+  
+  if (type.includes("plane") || type.includes("flight") || type.includes("air")) return "plane";
+  if (type.includes("train") || type.includes("rail")) return "train";
+  if (type.includes("bus") || type.includes("road")) return "bus";
+  
+  return "plane"; // default
 };
 
 app.post("/api/get-travel-options", async (req, res) => {
@@ -85,69 +58,72 @@ app.post("/api/get-travel-options", async (req, res) => {
   }
 
   try {
-    console.log("Generating travel options for:", { source, destination, travelDate });
-
+    // 3. SIMPLIFIED AI PROMPT - NO LINKS REQUESTED
     const systemPrompt = `You are a travel assistant. Provide exactly 6 travel options from ${source} to ${destination} on ${travelDate} as JSON.
-      Include flights, trains, and buses. For each option include:
-      - departureTime (e.g., "08:30 AM")
-      - arrivalTime (e.g., "10:45 AM")  
-      - duration (e.g., "2h 15m")
-      - price (e.g., "₹249")
-      - type ("plane", "train", or "bus")
-      - icon ("plane", "train", or "bus")
+      Include flights, trains, and buses. For each option provide ONLY:
+      - departureTime (format: "08:30 AM")
+      - arrivalTime (format: "10:45 AM")
+      - duration (format: "2h 15m")
+      - price (format: "₹249")
+      - transportMode (ONLY use these exact values: "plane", "train", or "bus")
       
-      Example format:
+      Example response:
       {
-        "travelOptions": [
+        "options": [
           {
             "departureTime": "08:30 AM",
             "arrivalTime": "10:45 AM",
             "duration": "2h 15m",
             "price": "₹249",
-            "type": "plane",
-            "icon": "plane"
-          },
-          ...
+            "transportMode": "plane"
+          }
         ]
       }`;
 
     const response = await chatModel.invoke([
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Find options from ${source} to ${destination} on ${travelDate}` },
+      { role: "user", content: `Find travel options from ${source} to ${destination} on ${travelDate}` }
     ]);
 
     if (!response.content) {
       return res.status(500).json({ error: "AI response was empty" });
     }
 
-    let travelOptions;
+    let rawOptions;
     try {
       const cleanedText = response.content.replace(/```json|```/g, "").trim();
-      travelOptions = JSON.parse(cleanedText);
-      
-      // Process each option with proper link building
-      travelOptions.travelOptions = travelOptions.travelOptions.map(option => {
-        const transportType = option.type?.toLowerCase() || 'plane';
-        const validType = ['plane', 'train', 'bus'].includes(transportType) 
-          ? transportType 
-          : 'plane';
-          
-        return {
-          departureTime: option.departureTime || option.departure,
-          arrivalTime: option.arrivalTime || option.arrival,
-          duration: option.duration,
-          price: option.price,
-          type: validType,
-          icon: validType,
-          bookingLink: buildBookingLink(validType, source, destination, travelDate)
-        };
-      });
+      rawOptions = JSON.parse(cleanedText);
     } catch (err) {
       console.error("Parsing error:", err);
-      return res.status(500).json({ error: "Failed to process travel options" });
+      return res.status(500).json({ error: "Failed to parse travel options" });
     }
 
-    res.json(travelOptions);
+    // 4. COMPLETE RESPONSE RECONSTRUCTION - WE CONTROL ALL LINKS
+    const processedOptions = {
+      travelOptions: rawOptions.options?.map(option => {
+        const transportType = normalizeTransportType(option.transportMode || option.type);
+        const transportInfo = TRANSPORT_DATA[transportType] || TRANSPORT_DATA.plane;
+
+        return {
+          departureTime: option.departureTime || "N/A",
+          arrivalTime: option.arrivalTime || "N/A",
+          duration: option.duration || "N/A",
+          price: option.price || "N/A",
+          type: transportType,
+          icon: transportInfo.icon,
+          bookingLink: transportInfo.bookingLink // OUR ENFORCED LINK
+        };
+      }) || []
+    };
+
+    // 5. FINAL VALIDATION - NO EXAMPLE.COM LINKS
+    processedOptions.travelOptions.forEach(option => {
+      if (option.bookingLink.includes("example.com")) {
+        option.bookingLink = TRANSPORT_DATA.plane.bookingLink;
+      }
+    });
+
+    res.json(processedOptions);
   } catch (err) {
     console.error("API error:", err);
     res.status(500).json({ error: err.message });

@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plane, Train, Bus, Car } from "lucide-react";
 import { Card, CardContent, CardFooter, CardTitle } from "@/components/ui/card";
 import { GoogleMap, LoadScript, DirectionsRenderer } from "@react-google-maps/api";
+import { BarChart, LineChart, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Bar, Line, Cell } from 'recharts';
 
 const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
@@ -32,7 +33,6 @@ export function TravelOptions() {
   const [error, setError] = useState("");
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
 
-  // Type definition for travel options
   type TravelOption = {
     departure: string;
     arrival: string;
@@ -42,7 +42,6 @@ export function TravelOptions() {
     icon: string;
   };
 
-  // Fetch travel options from API
   const handleSubmit = async () => {
     setLoading(true);
     setError("");
@@ -77,7 +76,6 @@ export function TravelOptions() {
     }
   };
 
-  // Fetch directions from Google Maps API
   const fetchDirections = async (origin: string, destination: string) => {
     if (!origin || !destination) return;
 
@@ -87,7 +85,7 @@ export function TravelOptions() {
       {
         origin,
         destination,
-        travelMode: google.maps.TravelMode.DRIVING, // Change this based on transport type
+        travelMode: google.maps.TravelMode.DRIVING,
       },
       (result, status) => {
         if (status === google.maps.DirectionsStatus.OK) {
@@ -99,31 +97,82 @@ export function TravelOptions() {
     );
   };
 
-  // Ensure travelOptions is always an array before filtering
   const filteredOptions = Array.isArray(travelOptions)
     ? travelOptions.filter((option) => filter === "all" || option.icon === filter)
     : [];
+
+  // Dynamic data transformation functions
+  const getColorForTransport = (type: string) => {
+    switch(type) {
+      case 'plane': return '#3b82f6';
+      case 'train': return '#10b981';
+      case 'bus': return '#f59e0b';
+      case 'car': return '#6b7280';
+      default: return '#8b5cf6';
+    }
+  };
+
+  const getCostComparisonData = () => {
+    if (!travelOptions || travelOptions.length === 0) return [];
+
+    const costMap: Record<string, number> = {};
+    
+    travelOptions.forEach(option => {
+      try {
+        const transportType = option.icon || 'unknown';
+        const priceStr = option.price || '0';
+        const price = parseFloat(priceStr.replace(/[^\d.-]/g, '')) || 0;
+        
+        if (!costMap[transportType] || price < costMap[transportType]) {
+          costMap[transportType] = price;
+        }
+      } catch (error) {
+        console.error('Error processing travel option:', error);
+      }
+    });
+
+    return Object.entries(costMap).map(([name, cost]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      cost,
+      fill: getColorForTransport(name)
+    }));
+  };
+
+  const getTimeVsCostData = () => {
+    if (!travelOptions || travelOptions.length === 0) return [];
+
+    return travelOptions.map(option => {
+      const timeParts = option.duration.match(/(\d+)h\s*(\d+)m/) || [];
+      const hours = parseInt(timeParts[1] || '0');
+      const minutes = parseInt(timeParts[2] || '0');
+      const totalMinutes = hours * 60 + minutes;
+      
+      const price = parseFloat(option.price.replace(/[^\d.-]/g, '')) || 0;
+
+      return {
+        time: totalMinutes,
+        cost: price,
+        type: option.icon
+      };
+    });
+  };
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Travel Options</h1>
 
-      {/* Input Fields */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Input placeholder="Source" value={source} onChange={(e) => setSource(e.target.value)} />
         <Input placeholder="Destination" value={destination} onChange={(e) => setDestination(e.target.value)} />
         <Input type="date" value={travelDate} onChange={(e) => setTravelDate(e.target.value)} />
       </div>
 
-      {/* Submit Button */}
       <Button onClick={handleSubmit} disabled={loading} className="mt-4">
         {loading ? "Searching..." : "Find Travel Options"}
       </Button>
 
-      {/* Error Message */}
       {error && <p className="text-red-500">{error}</p>}
 
-      {/* Travel Option Tabs */}
       <Tabs defaultValue="all" className="w-full">
         <div className="flex justify-between items-center mb-6">
           <TabsList className="grid grid-cols-5 w-auto">
@@ -144,7 +193,6 @@ export function TravelOptions() {
         </div>
       </Tabs>
 
-      {/* Travel Options List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredOptions.length === 0 ? (
           <p className="text-gray-500">No travel options available.</p>
@@ -174,12 +222,78 @@ export function TravelOptions() {
         )}
       </div>
 
-      {/* Google Maps Integration */}
       <LoadScript googleMapsApiKey={googleMapsApiKey}>
         <GoogleMap mapContainerStyle={mapContainerStyle} center={defaultCenter} zoom={5}>
           {directions && <DirectionsRenderer directions={directions} />}
         </GoogleMap>
       </LoadScript>
+
+      {travelOptions.length > 0 && (
+        <div className="space-y-8 mt-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <Card>
+              <CardContent>
+                <CardTitle className="text-lg font-semibold p-4">Cost Comparison</CardTitle>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={getCostComparisonData()}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`₹${value}`, "Cost"]}/>
+                      <Bar dataKey="cost" name="Cost">
+                        {getCostComparisonData().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <CardTitle className="text-lg font-semibold p-4">Time vs. Cost Analysis</CardTitle>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={getTimeVsCostData()}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="time"
+                        label={{ value: "Time (minutes)", position: "insideBottomRight", offset: -10 }}
+                      />
+                      <YAxis label={{ value: "Cost (₹)", angle: -90, position: "insideLeft" }} />
+                      <Tooltip 
+                        formatter={(value, name, props) => [
+                          name === 'cost' ? `₹${value}` : `${value} mins`,
+                          name.charAt(0).toUpperCase() + name.slice(1)
+                        ]}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="cost"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        dot={{ r: 6 }}
+                        activeDot={{ r: 8 }}
+                        name="Cost"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
