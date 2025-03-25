@@ -146,6 +146,7 @@ export function CostEstimator() {
                     dot={{ r: 6 }}
                     activeDot={{ r: 8 }}
                   />
+                  
                 </LineChart>
               </ResponsiveContainer>
             </div>

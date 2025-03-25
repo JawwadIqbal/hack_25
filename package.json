@@ -50,6 +50,7 @@
     "dotenv": "^16.4.7",
     "embla-carousel-react": "8.5.1",
     "express": "^4.21.2",
+    "framer-motion": "^12.5.0",
     "gsap": "^3.12.7",
     "html2canvas": "^1.4.1",
     "input-otp": "1.4.1",
